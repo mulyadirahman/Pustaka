@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#5a3a1e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<title>Perpustakaan Pribadi</title>
+<style>
+:root{--wood1:#c98f55;--wood2:#a86a35;--wood3:#7b4a22;--dark:#3b2412;--cream:#f6e7cf;--accent:#e0a13c}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:#2a1a0d;color:var(--cream)}
+button,select,input{font:inherit}
+#app{position:fixed;inset:0;display:flex;flex-direction:column}
+
+/* ===== Header ===== */
+header{display:flex;align-items:center;gap:8px;padding:8px 10px;padding-top:max(8px,env(safe-area-inset-top));
+  background:linear-gradient(#e2b074,#b97b41);border-bottom:3px solid #6b3f1b;box-shadow:0 2px 6px #0006;color:#3b2412}
+header h1{font-size:17px;margin:0;flex:1;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.search{display:flex;align-items:center;background:#3b2412cc;border-radius:16px;padding:0 10px;height:34px;flex:0 1 220px;min-width:0}
+.search input{background:none;border:0;outline:0;color:#fff;width:100%;min-width:0}
+.search input::placeholder{color:#d9bf9f}
+.ibtn{width:38px;height:38px;border-radius:50%;border:0;background:#3b2412;color:#ffe9c7;font-size:20px;display:grid;place-items:center;flex:none}
+.ibtn:active{transform:scale(.94)}
+
+/* ===== Kategori ===== */
+#chips{display:flex;gap:8px;padding:8px 10px;overflow-x:auto;background:#4a2f17;border-bottom:2px solid #2a1a0d;scrollbar-width:none}
+#chips::-webkit-scrollbar{display:none}
+.chip{flex:none;border:0;border-radius:14px;padding:6px 14px;background:#6b4624;color:#f6e7cf;font-size:14px}
+.chip.on{background:var(--accent);color:#2a1a0d;font-weight:700}
+
+/* ===== Rak ===== */
+#shelfArea{flex:1;position:relative;overflow:hidden;
+  background:
+   repeating-linear-gradient(90deg,#0000 0 38px,#0000000d 38px 40px,#0000 40px 91px,#ffffff08 91px 93px),
+   linear-gradient(90deg,#8e5528,#a8683a 20%,#9a5d30 50%,#a8683a 80%,#8e5528);
+  box-shadow:inset 8px 0 14px #0006,inset -8px 0 14px #0006}
+.row{position:relative;display:flex;align-items:flex-end;gap:14px;padding:0 18px;
+  background:linear-gradient(#0000 60%,#0000002e)}
+.plank{position:absolute;left:0;right:0;bottom:0;height:16px;
+  background:linear-gradient(#d29a5f,#b57a43 40%,#7a4a22);box-shadow:0 5px 8px #0008;border-top:1px solid #ecc189}
+.book{position:relative;flex:none;border-radius:2px 5px 5px 2px;background:#ddd;overflow:hidden;margin-bottom:16px;
+  box-shadow:3px 4px 7px #000a,inset 3px 0 3px #fff6;cursor:pointer;border:0;padding:0}
+.book img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
+.book .cap{position:absolute;left:0;right:0;bottom:0;padding:14px 4px 3px;font-size:10.5px;line-height:1.15;color:#fff;
+  background:linear-gradient(#0000,#000c);text-align:center;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;pointer-events:none}
+.book .more{position:absolute;top:3px;right:3px;width:26px;height:26px;border-radius:50%;border:0;background:#000a;color:#fff;font-size:16px;line-height:1;display:grid;place-items:center}
+.book .bar{position:absolute;left:0;bottom:0;height:3px;background:var(--accent)}
+#pager{position:absolute;left:50%;bottom:6px;transform:translateX(-50%);display:flex;align-items:center;gap:4px;z-index:2}
+#pager button{border:0;border-radius:12px;background:#3b2412;color:#ffe9c7;width:34px;height:26px}
+#pager span{background:#3b2412;color:#ffe9c7;border-radius:12px;padding:4px 14px;font-size:13px;min-width:70px;text-align:center}
+#empty{position:absolute;inset:0;display:none;place-items:center;text-align:center;padding:30px;font-size:16px;line-height:1.5;color:#fff9;pointer-events:none}
+
+/* ===== Dialog / sheet ===== */
+.modal{position:fixed;inset:0;background:#000a;display:none;align-items:flex-end;justify-content:center;z-index:30}
+.modal.show{display:flex}
+.sheet{width:100%;max-width:480px;background:#fff7ea;color:#2a1a0d;border-radius:18px 18px 0 0;padding:16px;padding-bottom:max(16px,env(safe-area-inset-bottom));max-height:90vh;overflow:auto}
+@media(min-width:700px){.modal{align-items:center}.sheet{border-radius:18px}}
+.sheet h2{margin:0 0 10px;font-size:18px}
+.sheet label{display:block;font-size:13px;margin:10px 0 4px;color:#6b4624}
+.sheet input[type=text],.sheet select{width:100%;padding:10px;border:1px solid #cfae82;border-radius:10px;background:#fff;color:#2a1a0d}
+.btn{display:block;width:100%;border:0;border-radius:12px;padding:12px;margin-top:8px;background:#7b4a22;color:#fff;font-weight:600;text-align:center}
+.btn.alt{background:#e9d3b2;color:#3b2412}
+.btn.red{background:#a73a2a}
+.hint{font-size:12px;color:#6b4624;margin-top:6px;line-height:1.4}
+.fileBtn{position:relative;overflow:hidden}
+.fileBtn input{position:absolute;inset:0;opacity:0;width:100%;height:100%}
+
+/* ===== Progres ===== */
+#busy{position:fixed;inset:0;background:#000d;display:none;place-items:center;z-index:50;padding:20px}
+#busy .box{background:#fff7ea;color:#2a1a0d;border-radius:16px;padding:20px;width:100%;max-width:380px;text-align:center}
+#busy .track{height:10px;background:#e4cfae;border-radius:6px;overflow:hidden;margin:12px 0}
+#busy .fill{height:100%;width:0;background:#7b4a22;transition:width .2s}
+#toast{position:fixed;left:50%;bottom:70px;transform:translateX(-50%);background:#000d;color:#fff;padding:10px 16px;border-radius:20px;z-index:60;display:none;max-width:90%;text-align:center;font-size:14px}
+
+/* ===== Pembaca ===== */
+#reader{position:fixed;inset:0;background:radial-gradient(circle at 50% 40%,#4a4a52,#1c1c22);display:none;flex-direction:column;z-index:20}
+#reader.show{display:flex}
+#rbar{display:flex;align-items:center;gap:8px;padding:6px 10px;padding-top:max(6px,env(safe-area-inset-top));background:#0008;color:#fff}
+#rbar .t{flex:1;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#rbar .ibtn{width:36px;height:36px;font-size:18px;background:#fff2}
+#stage{flex:1;position:relative;display:grid;place-items:center;overflow:hidden;touch-action:pan-y}
+#book{box-shadow:0 12px 40px #000c}
+#book .page{background:#fff}
+#book img{width:100%;height:100%;display:block;user-select:none;-webkit-user-drag:none}
+#rfoot{display:flex;align-items:center;gap:10px;padding:8px 14px;padding-bottom:max(8px,env(safe-area-inset-bottom));background:#0008;color:#fff;font-size:13px}
+#rfoot input[type=range]{flex:1;accent-color:var(--accent)}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>📚 Perpustakaan Pribadi</h1>
+    <label class="search"><span>🔍</span><input id="q" type="search" placeholder="Cari buku…" autocomplete="off"></label>
+    <button class="ibtn" id="btnAdd" title="Impor PDF">＋</button>
+    <button class="ibtn" id="btnMenu" title="Menu">⚙</button>
+  </header>
+  <div id="chips"></div>
+  <div id="shelfArea">
+    <div id="rows"></div>
+    <div id="empty">Rak masih kosong.<br>Ketuk tombol <b>＋</b> di kanan atas untuk mengimpor PDF.</div>
+    <div id="pager"><button id="pPrev">‹</button><span id="pInfo">1 / 1</span><button id="pNext">›</button></div>
+  </div>
+</div>
+
+<!-- Pembaca -->
+<div id="reader">
+  <div id="rbar">
+    <button class="ibtn" id="rClose" title="Tutup">✕</button>
+    <div class="t" id="rTitle"></div>
+    <button class="ibtn" id="rCover" title="Jadikan halaman ini sampul">🖼</button>
+  </div>
+  <div id="stage"><div id="book"></div></div>
+  <div id="rfoot"><span id="rPos">1</span><input type="range" id="rRange" min="0" max="0" value="0"><span id="rTot">0</span></div>
+</div>
+
+<!-- Impor PDF -->
+<div class="modal" id="mImport"><div class="sheet">
+  <h2>Impor PDF ke Rak</h2>
+  <div class="fileBtn btn" id="pickPdf">Pilih file PDF (boleh banyak)<input type="file" id="fPdf" accept="application/pdf,.pdf" multiple></div>
+  <div class="hint" id="pdfInfo">Belum ada file dipilih.</div>
+  <label>Kategori</label>
+  <select id="impCat"></select>
+  <label>Kualitas halaman</label>
+  <select id="impQ">
+    <option value="800">Hemat (ringan, cocok HP)</option>
+    <option value="1100" selected>Normal (disarankan)</option>
+    <option value="1500">Tajam (file besar, untuk tablet)</option>
+  </select>
+  <div class="hint">Makin tajam, makin besar memori yang terpakai. Impor PDF tebal bisa memakan waktu beberapa menit — biarkan layar tetap menyala.</div>
+  <button class="btn" id="goImport">Mulai Impor</button>
+  <button class="btn alt" data-close>Batal</button>
+</div></div>
+
+<!-- Menu utama -->
+<div class="modal" id="mMenu"><div class="sheet">
+  <h2>Menu</h2>
+  <button class="btn" id="mExportAll">Ekspor seluruh perpustakaan (cadangan)</button>
+  <div class="fileBtn btn alt">Impor dari file cadangan (.pustaka)<input type="file" id="fLib" accept="*/*"></div>
+  <div class="hint" id="storeInfo"></div>
+  <div class="hint">Untuk menyamakan isi HP dan tablet: ekspor di salah satu perangkat, pindahkan file .pustaka (kabel/Bluetooth/flashdisk), lalu impor di perangkat lainnya.</div>
+  <button class="btn alt" data-close>Tutup</button>
+</div></div>
+
+<!-- Menu buku -->
+<div class="modal" id="mBook"><div class="sheet">
+  <h2 id="bTitleH">Buku</h2>
+  <label>Judul</label><input type="text" id="bTitle">
+  <label>Kategori</label><select id="bCat"></select>
+  <button class="btn" id="bSave">Simpan judul &amp; kategori</button>
+  <div class="fileBtn btn alt">Ganti sampul dari gambar<input type="file" id="fCover" accept="image/*"></div>
+  <button class="btn alt" id="bExport">Ekspor buku ini (.pustaka)</button>
+  <button class="btn red" id="bDel">Hapus buku</button>
+  <button class="btn alt" data-close>Tutup</button>
+  <div class="hint">Tips: saat membaca, ketuk tombol 🖼 di pojok atas untuk menjadikan halaman yang sedang dibuka sebagai sampul.</div>
+</div></div>
+
+<!-- Progres -->
+<div id="busy"><div class="box"><div id="busyT">Memproses…</div><div class="track"><div class="fill" id="busyF"></div></div><div class="hint" id="busyS"></div><button class="btn alt" id="busyX">Batalkan</button></div></div>
+<div id="toast"></div>
+
+<script src="lib/pdf.min.js"></script>
+<script src="lib/page-flip.browser.js"></script>
+<script>
+'use strict';
+const CATS=['Peraturan','Komik','Keagamaan','Lainnya'];
+const $=s=>document.querySelector(s);
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const req=r=>new Promise((res,rej)=>{r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});
+const txDone=t=>new Promise((res,rej)=>{t.oncomplete=()=>res();t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error)});
+function toast(m,ms=2600){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display='none',ms)}
+
+/* ---------- Database ---------- */
+let db;
+function openDB(){return new Promise((res,rej)=>{
+  const r=indexedDB.open('pustaka-pribadi',1);
+  r.onupgradeneeded=()=>{const d=r.result;d.createObjectStore('books',{keyPath:'id'});d.createObjectStore('pages',{keyPath:['bookId','n']})};
+  r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+async function allBooks(){return req(db.transaction('books').objectStore('books').getAll())}
+async function getBook(id){return req(db.transaction('books').objectStore('books').get(id))}
+async function putBook(b){const t=db.transaction('books','readwrite');t.objectStore('books').put(b);return txDone(t)}
+async function putPage(bookId,n,blob){const t=db.transaction('pages','readwrite');t.objectStore('pages').put({bookId,n,blob});return txDone(t)}
+async function getPages(bookId){return req(db.transaction('pages').objectStore('pages').getAll(IDBKeyRange.bound([bookId,0],[bookId,1e9])))}
+async function getPage(bookId,n){return req(db.transaction('pages').objectStore('pages').get([bookId,n]))}
+async function delPages(bookId){const t=db.transaction('pages','readwrite');t.objectStore('pages').delete(IDBKeyRange.bound([bookId,0],[bookId,1e9]));return txDone(t)}
+async function delBook(id){await delPages(id);const t=db.transaction('books','readwrite');t.objectStore('books').delete(id);return txDone(t)}
+
+/* ---------- Gambar ---------- */
+function loadImg(blob){return new Promise((res,rej)=>{const u=URL.createObjectURL(blob),i=new Image();i.onload=()=>{URL.revokeObjectURL(u);res(i)};i.onerror=()=>{URL.revokeObjectURL(u);rej(new Error('Gambar tidak terbaca'))};i.src=u})}
+async function makeThumb(blob,w=420){
+  const im=await loadImg(blob);const s=w/im.naturalWidth;const c=document.createElement('canvas');
+  c.width=w;c.height=Math.round(im.naturalHeight*s);c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+  return new Promise(r=>c.toBlob(r,'image/jpeg',.85));
+}
+/* sampul dipaksa rasio buku 1:1.42 (potong tengah) */
+async function makeCover(blob,w=420){
+  const im=await loadImg(blob),H=Math.round(w*1.42),c=document.createElement('canvas');c.width=w;c.height=H;
+  const ctx=c.getContext('2d'),ir=im.naturalWidth/im.naturalHeight,tr=w/H;let sx=0,sy=0,sw=im.naturalWidth,sh=im.naturalHeight;
+  if(ir>tr){sw=sh*tr;sx=(im.naturalWidth-sw)/2}else{sh=sw/tr;sy=0}
+  ctx.drawImage(im,sx,sy,sw,sh,0,0,w,H);
+  return new Promise(r=>c.toBlob(r,'image/jpeg',.85));
+}
+
+/* ---------- Rak ---------- */
+const S={books:[],cat:'Semua',q:'',page:0,urls:new Map()};
+function coverUrl(b){let u=S.urls.get(b.id);if(!u||u.v!==b.coverV){if(u)URL.revokeObjectURL(u.url);u={url:URL.createObjectURL(b.cover),v:b.coverV};S.urls.set(b.id,u)}return u.url}
+function fillCats(sel,withAll){sel.innerHTML='';CATS.forEach(c=>sel.add(new Option(c,c)))}
+function drawChips(){
+  const box=$('#chips');box.innerHTML='';
+  ['Semua',...CATS].forEach(c=>{const b=document.createElement('button');b.className='chip'+(S.cat===c?' on':'');
+    const n=c==='Semua'?S.books.length:S.books.filter(x=>x.cat===c).length;b.textContent=c+' ('+n+')';
+    b.onclick=()=>{S.cat=c;S.page=0;drawChips();render()};box.appendChild(b)});
+}
+function render(){
+  const area=$('#shelfArea'),rowsEl=$('#rows');
+  const W=area.clientWidth,H=area.clientHeight-34;
+  const cw=W<600?92:118,ch=Math.round(cw*1.42),gap=14,padX=18,rowH=ch+16+14;
+  const perRow=Math.max(1,Math.floor((W-2*padX+gap)/(cw+gap)));
+  const rows=Math.max(1,Math.floor(H/rowH));
+  const per=perRow*rows;
+  let list=S.books.filter(b=>(S.cat==='Semua'||b.cat===S.cat)&&(!S.q||b.title.toLowerCase().includes(S.q)));
+  list.sort((a,b)=>b.added-a.added);
+  const pages=Math.max(1,Math.ceil(list.length/per));
+  if(S.page>=pages)S.page=pages-1;
+  const slice=list.slice(S.page*per,S.page*per+per);
+  rowsEl.innerHTML='';
+  for(let r=0;r<rows;r++){
+    const row=document.createElement('div');row.className='row';row.style.height=rowH+'px';
+    slice.slice(r*perRow,r*perRow+perRow).forEach(b=>row.appendChild(bookEl(b,cw,ch)));
+    const pl=document.createElement('div');pl.className='plank';row.appendChild(pl);rowsEl.appendChild(row);
+  }
+  $('#pInfo').textContent=`${S.page+1} / ${pages}`;
+  $('#empty').style.display=S.books.length?'none':'grid';
+  $('#pPrev').disabled=S.page<=0;$('#pNext').disabled=S.page>=pages-1;
+  S.pages=pages;
+}
+function bookEl(b,cw,ch){
+  const el=document.createElement('div');el.className='book';el.style.width=cw+'px';el.style.height=ch+'px';el.setAttribute('role','button');
+  const im=document.createElement('img');im.src=coverUrl(b);im.alt=b.title;el.appendChild(im);
+  const cap=document.createElement('div');cap.className='cap';cap.textContent=b.title;el.appendChild(cap);
+  if(b.last>0&&b.n>1){const bar=document.createElement('div');bar.className='bar';bar.style.width=Math.min(100,Math.round(b.last/(b.n-1)*100))+'%';el.appendChild(bar)}
+  const m=document.createElement('button');m.className='more';m.textContent='⋮';m.title='Pengaturan buku';
+  m.onclick=e=>{e.stopPropagation();openBookMenu(b.id)};el.appendChild(m);
+  el.onclick=()=>openReader(b.id);
+  return el;
+}
+async function refresh(){S.books=await allBooks();drawChips();render()}
+$('#pPrev').onclick=()=>{if(S.page>0){S.page--;render()}};
+$('#pNext').onclick=()=>{if(S.page<S.pages-1){S.page++;render()}};
+$('#q').oninput=e=>{S.q=e.target.value.trim().toLowerCase();S.page=0;render()};
+(function swipe(){let x0=null,y0=0;const a=$('#shelfArea');
+  a.addEventListener('touchstart',e=>{x0=e.touches[0].clientX;y0=e.touches[0].clientY},{passive:true});
+  a.addEventListener('touchend',e=>{if(x0===null)return;const dx=e.changedTouches[0].clientX-x0,dy=e.changedTouches[0].clientY-y0;x0=null;
+    if(Math.abs(dx)>70&&Math.abs(dx)>Math.abs(dy)*1.5){if(dx<0)$('#pNext').click();else $('#pPrev').click()}},{passive:true})})();
+let rz;addEventListener('resize',()=>{clearTimeout(rz);rz=setTimeout(()=>{render()},150)});
+
+/* ---------- Modal ---------- */
+function show(id){$(id).classList.add('show')}
+function hide(id){$(id).classList.remove('show')}
+document.querySelectorAll('.modal').forEach(m=>{
+  m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('show')});
+  m.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>m.classList.remove('show'));
+});
+$('#btnAdd').onclick=()=>{$('#fPdf').value='';pdfFiles=[];$('#pdfInfo').textContent='Belum ada file dipilih.';show('#mImport')};
+$('#btnMenu').onclick=async()=>{
+  let t='';try{const e=await navigator.storage.estimate();t=`Penyimpanan terpakai: ${(e.usage/1048576).toFixed(0)} MB dari ±${(e.quota/1048576/1024).toFixed(1)} GB tersedia.`}catch(_){}
+  $('#storeInfo').textContent=t;show('#mMenu')};
+
+/* ---------- Progres ---------- */
+let cancelFlag=false;
+function busy(t){$('#busyT').textContent=t;$('#busyF').style.width='0';$('#busyS').textContent='';cancelFlag=false;$('#busy').style.display='grid'}
+function busyP(p,s){$('#busyF').style.width=Math.round(p*100)+'%';if(s)$('#busyS').textContent=s}
+function unbusy(){$('#busy').style.display='none'}
+$('#busyX').onclick=()=>{cancelFlag=true;$('#busyS').textContent='Membatalkan…'};
+
+/* ---------- Impor PDF ---------- */
+let pdfFiles=[];
+$('#fPdf').onchange=e=>{pdfFiles=[...e.target.files];$('#pdfInfo').textContent=pdfFiles.length?pdfFiles.map(f=>f.name+' ('+(f.size/1048576).toFixed(1)+' MB)').join('\n'):'Belum ada file dipilih.';$('#pdfInfo').style.whiteSpace='pre-line'};
+pdfjsLib.GlobalWorkerOptions.workerSrc='lib/pdf.worker.min.js';
+async function importPdf(file,cat,maxW,idx,total){
+  const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
+  const id=uid(),n=pdf.numPages;let cover=null;
+  try{
+    for(let i=1;i<=n;i++){
+      if(cancelFlag)throw new Error('cancel');
+      const pg=await pdf.getPage(i),v1=pg.getViewport({scale:1}),sc=Math.min(maxW/v1.width,3),vp=pg.getViewport({scale:sc});
+      const c=document.createElement('canvas');c.width=Math.floor(vp.width);c.height=Math.floor(vp.height);
+      const ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);
+      await pg.render({canvasContext:ctx,viewport:vp}).promise;
+      const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.82));
+      if(i===1)cover=await makeCover(blob);
+      await putPage(id,i-1,blob);
+      pg.cleanup();c.width=c.height=0;
+      busyP(((idx+i/n)/total),`${file.name} — halaman ${i} dari ${n}`);
+      if(i%5===0)await new Promise(r=>setTimeout(r,0));
+    }
+  }catch(e){await delPages(id);throw e}
+  const title=file.name.replace(/\.pdf$/i,'').replace(/[_]+/g,' ').trim();
+  await putBook({id,title,cat,n,cover,coverV:1,added:Date.now(),last:0});
+}
+$('#goImport').onclick=async()=>{
+  if(!pdfFiles.length){toast('Pilih file PDF dulu');return}
+  const cat=$('#impCat').value,mw=+$('#impQ').value,files=pdfFiles;hide('#mImport');busy('Mengimpor PDF…');
+  let ok=0,wl=null;
+  try{wl=await navigator.wakeLock.request('screen')}catch(_){}
+  try{for(let i=0;i<files.length;i++){await importPdf(files[i],cat,mw,i,files.length);ok++}}
+  catch(e){if(e.message!=='cancel'){console.error(e);toast('Gagal mengimpor: '+(e.message||e),5000)}}
+  try{wl&&wl.release()}catch(_){}
+  unbusy();await refresh();if(ok)toast(ok+' buku berhasil ditambahkan');
+  try{navigator.storage.persist&&navigator.storage.persist()}catch(_){}
+};
+
+/* ---------- Menu buku ---------- */
+let curId=null;
+async function openBookMenu(id){
+  curId=id;const b=await getBook(id);$('#bTitleH').textContent='Pengaturan Buku';$('#bTitle').value=b.title;$('#bCat').value=b.cat;show('#mBook')}
+$('#bSave').onclick=async()=>{const b=await getBook(curId);b.title=$('#bTitle').value.trim()||b.title;b.cat=$('#bCat').value;await putBook(b);hide('#mBook');await refresh();toast('Tersimpan')};
+$('#fCover').onchange=async e=>{const f=e.target.files[0];if(!f)return;
+  try{const b=await getBook(curId);b.cover=await makeCover(f);b.coverV=(b.coverV||1)+1;await putBook(b);hide('#mBook');await refresh();toast('Sampul diganti')}catch(err){toast('Gambar tidak bisa dipakai')}
+  e.target.value=''};
+$('#bDel').onclick=async()=>{const b=await getBook(curId);if(!confirm('Hapus "'+b.title+'" dari perpustakaan?\nBuku akan hilang dari perangkat ini.'))return;
+  await delBook(curId);const u=S.urls.get(curId);if(u){URL.revokeObjectURL(u.url);S.urls.delete(curId)}hide('#mBook');await refresh();toast('Buku dihapus')};
+$('#bExport').onclick=()=>{hide('#mBook');exportBooks([curId])};
+
+/* ---------- Ekspor / Impor .pustaka ---------- */
+const MAGIC='PUSTAKA1';
+const isNative=()=>!!(window.Capacitor&&Capacitor.isNativePlatform&&Capacitor.isNativePlatform());
+function blobToB64(b){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]||'');r.onerror=()=>rej(r.error);r.readAsDataURL(b)})}
+async function saveBlob(blob,fname){
+  if(isNative()&&Capacitor.Plugins&&Capacitor.Plugins.Filesystem&&Capacitor.Plugins.Share){
+    /* Aplikasi APK: tulis ke cache secara bertahap, lalu buka menu Bagikan/Simpan */
+    const FS=Capacitor.Plugins.Filesystem,SH=Capacitor.Plugins.Share,CH=3*1024*1024;
+    try{await FS.deleteFile({path:fname,directory:'CACHE'})}catch(_){}
+    for(let off=0;off<blob.size;off+=CH){
+      const d=await blobToB64(blob.slice(off,off+CH));
+      if(off===0)await FS.writeFile({path:fname,directory:'CACHE',data:d});
+      else await FS.appendFile({path:fname,directory:'CACHE',data:d});
+      busyP(Math.min(1,(off+CH)/blob.size),'Menulis file… '+Math.min(100,Math.round((off+CH)/blob.size*100))+'%');
+    }
+    const {uri}=await FS.getUri({path:fname,directory:'CACHE'});
+    await SH.share({title:fname,dialogTitle:'Simpan / kirim file cadangan',files:[uri]});
+    toast('File cadangan siap — pilih tujuan penyimpanan di menu yang muncul',4000);
+  }else{
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;
+    document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},4000);
+    toast('File cadangan dibuat — cek folder Unduhan');
+  }
+}
+async function exportBooks(ids){
+  busy('Menyiapkan file cadangan…');
+  try{
+    const head=[],parts=[];
+    for(let k=0;k<ids.length;k++){
+      const b=await getBook(ids[k]);const pages=await getPages(b.id);
+      head.push({meta:{title:b.title,cat:b.cat,n:b.n,last:b.last||0,added:b.added},cover:b.cover.size,pages:pages.map(p=>p.blob.size)});
+      parts.push(b.cover);pages.forEach(p=>parts.push(p.blob));
+      busyP((k+1)/ids.length,b.title);
+      if(cancelFlag)throw new Error('cancel');
+    }
+    const hb=new TextEncoder().encode(JSON.stringify({books:head}));
+    const len=new Uint8Array(4);new DataView(len.buffer).setUint32(0,hb.length);
+    const blob=new Blob([MAGIC,len,hb,...parts],{type:'application/octet-stream'});
+    const fname=(ids.length===1?'buku':'perpustakaan')+'-'+new Date().toISOString().slice(0,10)+'.pustaka';
+    await saveBlob(blob,fname);
+  }catch(e){if(e.message!=='cancel'){console.error(e);toast('Gagal mengekspor: '+e.message,5000)}}
+  unbusy();
+}
+$('#mExportAll').onclick=()=>{hide('#mMenu');if(!S.books.length){toast('Rak masih kosong');return}exportBooks(S.books.map(b=>b.id))};
+$('#fLib').onchange=async e=>{
+  const f=e.target.files[0];e.target.value='';if(!f)return;hide('#mMenu');busy('Membaca file cadangan…');
+  try{
+    const m=new TextDecoder().decode(await f.slice(0,8).arrayBuffer());if(m!==MAGIC)throw new Error('Bukan file .pustaka yang valid');
+    const hl=new DataView(await f.slice(8,12).arrayBuffer()).getUint32(0);
+    const H=JSON.parse(new TextDecoder().decode(await f.slice(12,12+hl).arrayBuffer()));
+    let off=12+hl;const exist=new Set(S.books.map(b=>b.title+'|'+b.n));let added=0;
+    for(let k=0;k<H.books.length;k++){
+      const e=H.books[k];const id=uid();
+      const cover=f.slice(off,off+e.cover,'image/jpeg');off+=e.cover;
+      const skip=exist.has(e.meta.title+'|'+e.meta.n);
+      for(let i=0;i<e.pages.length;i++){const sz=e.pages[i];if(!skip)await putPage(id,i,f.slice(off,off+sz,'image/jpeg'));off+=sz;
+        if(cancelFlag)throw new Error('cancel')}
+      if(!skip){await putBook({id,title:e.meta.title,cat:CATS.includes(e.meta.cat)?e.meta.cat:'Lainnya',n:e.meta.n,cover,coverV:1,added:e.meta.added||Date.now(),last:e.meta.last||0});added++}
+      busyP((k+1)/H.books.length,e.meta.title);
+    }
+    toast(added+' buku diimpor'+(added<H.books.length?` (${H.books.length-added} sudah ada, dilewati)`:''),4000);
+  }catch(err){if(err.message!=='cancel'){console.error(err);toast('Gagal: '+err.message,5000)}}
+  unbusy();await refresh();
+};
+
+/* ---------- Pembaca ---------- */
+const R={pf:null,book:null,urls:[],ratio:1.42,cur:0};
+async function openReader(id,push=true){
+  busy('Membuka buku…');
+  try{
+    const b=await getBook(id);const pages=await getPages(id);
+    if(!pages.length)throw new Error('Halaman buku kosong');
+    R.book=b;R.urls=pages.map(p=>URL.createObjectURL(p.blob));
+    const im=await loadImg(pages[0].blob);R.ratio=im.naturalHeight/im.naturalWidth;
+    R.cur=Math.min(b.last||0,pages.length-1);
+    $('#rTitle').textContent=b.title;$('#rRange').max=pages.length-1;$('#rTot').textContent=pages.length;
+    $('#reader').classList.add('show');
+    if(push)history.pushState({r:1},'');
+    buildBook();
+  }catch(e){console.error(e);toast('Gagal membuka: '+e.message,4000)}
+  unbusy();
+}
+function buildBook(){
+  if(R.pf){try{R.cur=R.pf.getCurrentPageIndex()}catch(_){}try{R.pf.destroy()}catch(_){}R.pf=null}
+  const stage=$('#stage');stage.innerHTML='<div id="book"></div>';const el=$('#book');
+  const aw=stage.clientWidth-8,ah=stage.clientHeight-8,two=aw>ah*1.05&&aw/ah>1.15;
+  let pw=two?aw/2:aw,ph=pw*R.ratio;if(ph>ah){ph=ah;pw=ph/R.ratio}
+  pw=Math.floor(pw);ph=Math.floor(ph);
+  const total=R.urls.length;
+  R.pf=new St.PageFlip(el,{width:pw,height:ph,size:'fixed',minWidth:pw,maxWidth:pw,minHeight:ph,maxHeight:ph,
+    showCover:true,usePortrait:!two,drawShadow:true,maxShadowOpacity:.5,flippingTime:650,mobileScrollSupport:false,swipeDistance:25,startPage:0});
+  R.pf.loadFromImages(R.urls);
+  R.pf.on('flip',e=>{R.cur=e.data;upd();R.book.last=R.cur;saveLast()});
+  if(R.cur>0)R.pf.turnToPage(R.cur);
+  upd();
+}
+function upd(){$('#rRange').value=R.cur;$('#rPos').textContent=(R.cur+1)}
+let sv;function saveLast(){clearTimeout(sv);sv=setTimeout(async()=>{try{const b=await getBook(R.book.id);if(b){b.last=R.cur;await putBook(b);const x=S.books.find(y=>y.id===b.id);if(x)x.last=R.cur}}catch(_){}},500)}
+$('#rRange').oninput=e=>{R.cur=+e.target.value;R.pf.turnToPage(R.cur);upd();R.book.last=R.cur;saveLast()};
+function closeReader(){
+  if(!$('#reader').classList.contains('show'))return;
+  try{R.cur=R.pf.getCurrentPageIndex();R.pf.destroy()}catch(_){}R.pf=null;
+  $('#reader').classList.remove('show');$('#stage').innerHTML='';
+  R.urls.forEach(u=>URL.revokeObjectURL(u));R.urls=[];
+  clearTimeout(sv);if(R.book){(async()=>{const b=await getBook(R.book.id);if(b){b.last=R.cur;await putBook(b)}await refresh()})()}
+}
+$('#rClose').onclick=()=>{if(history.state&&history.state.r)history.back();else closeReader()};
+addEventListener('popstate',()=>closeReader());
+$('#rCover').onclick=async()=>{
+  try{const p=await getPage(R.book.id,R.cur);const b=await getBook(R.book.id);b.cover=await makeCover(p.blob);b.coverV=(b.coverV||1)+1;await putBook(b);toast('Halaman '+(R.cur+1)+' dijadikan sampul')}catch(e){toast('Gagal mengganti sampul')}};
+addEventListener('keydown',e=>{if(!R.pf||!$('#reader').classList.contains('show'))return;
+  if(e.key==='ArrowRight')R.pf.flipNext();else if(e.key==='ArrowLeft')R.pf.flipPrev();else if(e.key==='Escape')$('#rClose').click()});
+let rz2;addEventListener('resize',()=>{if(!$('#reader').classList.contains('show'))return;clearTimeout(rz2);rz2=setTimeout(buildBook,250)});
+addEventListener('orientationchange',()=>{setTimeout(()=>{if($('#reader').classList.contains('show'))buildBook()},350)});
+
+/* ---------- Mulai ---------- */
+(async()=>{
+  fillCats($('#impCat'));fillCats($('#bCat'));
+  try{db=await openDB()}catch(e){toast('Penyimpanan peramban tidak tersedia',6000);return}
+  await refresh();
+  if('serviceWorker' in navigator&&!isNative())navigator.serviceWorker.register('sw.js').catch(()=>{});
+  try{navigator.storage.persist&&navigator.storage.persist()}catch(_){}
+})();
+</script>
+</body>
+</html>
