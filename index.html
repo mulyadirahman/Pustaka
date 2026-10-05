@@ -305,9 +305,11 @@ async function importPdf(file,cat,maxW,idx,total){
 $('#goImport').onclick=async()=>{
   if(!pdfFiles.length){toast('Pilih file PDF dulu');return}
   const cat=$('#impCat').value,mw=+$('#impQ').value,files=pdfFiles;hide('#mImport');busy('Mengimpor PDF…');
-  let ok=0;
+  let ok=0,wl=null;
+  try{wl=await navigator.wakeLock.request('screen')}catch(_){}
   try{for(let i=0;i<files.length;i++){await importPdf(files[i],cat,mw,i,files.length);ok++}}
   catch(e){if(e.message!=='cancel'){console.error(e);toast('Gagal mengimpor: '+(e.message||e),5000)}}
+  try{wl&&wl.release()}catch(_){}
   unbusy();await refresh();if(ok)toast(ok+' buku berhasil ditambahkan');
   try{navigator.storage.persist&&navigator.storage.persist()}catch(_){}
 };
@@ -326,6 +328,28 @@ $('#bExport').onclick=()=>{hide('#mBook');exportBooks([curId])};
 
 /* ---------- Ekspor / Impor .pustaka ---------- */
 const MAGIC='PUSTAKA1';
+const isNative=()=>!!(window.Capacitor&&Capacitor.isNativePlatform&&Capacitor.isNativePlatform());
+function blobToB64(b){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]||'');r.onerror=()=>rej(r.error);r.readAsDataURL(b)})}
+async function saveBlob(blob,fname){
+  if(isNative()&&Capacitor.Plugins&&Capacitor.Plugins.Filesystem&&Capacitor.Plugins.Share){
+    /* Aplikasi APK: tulis ke cache secara bertahap, lalu buka menu Bagikan/Simpan */
+    const FS=Capacitor.Plugins.Filesystem,SH=Capacitor.Plugins.Share,CH=3*1024*1024;
+    try{await FS.deleteFile({path:fname,directory:'CACHE'})}catch(_){}
+    for(let off=0;off<blob.size;off+=CH){
+      const d=await blobToB64(blob.slice(off,off+CH));
+      if(off===0)await FS.writeFile({path:fname,directory:'CACHE',data:d});
+      else await FS.appendFile({path:fname,directory:'CACHE',data:d});
+      busyP(Math.min(1,(off+CH)/blob.size),'Menulis file… '+Math.min(100,Math.round((off+CH)/blob.size*100))+'%');
+    }
+    const {uri}=await FS.getUri({path:fname,directory:'CACHE'});
+    await SH.share({title:fname,dialogTitle:'Simpan / kirim file cadangan',files:[uri]});
+    toast('File cadangan siap — pilih tujuan penyimpanan di menu yang muncul',4000);
+  }else{
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;
+    document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},4000);
+    toast('File cadangan dibuat — cek folder Unduhan');
+  }
+}
 async function exportBooks(ids){
   busy('Menyiapkan file cadangan…');
   try{
@@ -340,10 +364,8 @@ async function exportBooks(ids){
     const hb=new TextEncoder().encode(JSON.stringify({books:head}));
     const len=new Uint8Array(4);new DataView(len.buffer).setUint32(0,hb.length);
     const blob=new Blob([MAGIC,len,hb,...parts],{type:'application/octet-stream'});
-    const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-    a.download=(ids.length===1?'buku':'perpustakaan')+'-'+new Date().toISOString().slice(0,10)+'.pustaka';
-    document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},4000);
-    toast('File cadangan dibuat — cek folder Unduhan');
+    const fname=(ids.length===1?'buku':'perpustakaan')+'-'+new Date().toISOString().slice(0,10)+'.pustaka';
+    await saveBlob(blob,fname);
   }catch(e){if(e.message!=='cancel'){console.error(e);toast('Gagal mengekspor: '+e.message,5000)}}
   unbusy();
 }
@@ -424,7 +446,7 @@ addEventListener('orientationchange',()=>{setTimeout(()=>{if($('#reader').classL
   fillCats($('#impCat'));fillCats($('#bCat'));
   try{db=await openDB()}catch(e){toast('Penyimpanan peramban tidak tersedia',6000);return}
   await refresh();
-  if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+  if('serviceWorker' in navigator&&!isNative())navigator.serviceWorker.register('sw.js').catch(()=>{});
   try{navigator.storage.persist&&navigator.storage.persist()}catch(_){}
 })();
 </script>
