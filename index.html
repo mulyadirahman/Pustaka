@@ -120,8 +120,8 @@ header h1{font-size:17px;margin:0;flex:1;font-weight:700;white-space:nowrap;over
 
 <!-- Impor PDF -->
 <div class="modal" id="mImport"><div class="sheet">
-  <h2>Impor PDF ke Rak</h2>
-  <div class="fileBtn btn" id="pickPdf">Pilih file PDF (boleh banyak)<input type="file" id="fPdf" accept="application/pdf,.pdf" multiple></div>
+  <h2>Impor Buku ke Rak</h2>
+  <div class="fileBtn btn" id="pickPdf">Pilih file PDF / CBR / CBZ (boleh banyak)<input type="file" id="fPdf" multiple></div>
   <div class="hint" id="pdfInfo">Belum ada file dipilih.</div>
   <label>Kategori</label>
   <select id="impCat"></select>
@@ -279,7 +279,10 @@ $('#busyX').onclick=()=>{cancelFlag=true;$('#busyS').textContent='Membatalkan…
 
 /* ---------- Impor PDF ---------- */
 let pdfFiles=[];
-$('#fPdf').onchange=e=>{pdfFiles=[...e.target.files];$('#pdfInfo').textContent=pdfFiles.length?pdfFiles.map(f=>f.name+' ('+(f.size/1048576).toFixed(1)+' MB)').join('\n'):'Belum ada file dipilih.';$('#pdfInfo').style.whiteSpace='pre-line'};
+const extOf=n=>(n.match(/\.([a-z0-9]+)$/i)||[,''])[1].toLowerCase();
+const BOOK_EXT=['pdf','cbz','cbr','zip','rar'];
+$('#fPdf').onchange=e=>{pdfFiles=[...e.target.files].filter(f=>BOOK_EXT.includes(extOf(f.name)));
+  if(e.target.files.length&&pdfFiles.length<e.target.files.length)toast('File selain PDF/CBR/CBZ dilewati',3500);$('#pdfInfo').textContent=pdfFiles.length?pdfFiles.map(f=>f.name+' ('+(f.size/1048576).toFixed(1)+' MB)').join('\n'):'Belum ada file dipilih.';$('#pdfInfo').style.whiteSpace='pre-line'};
 pdfjsLib.GlobalWorkerOptions.workerSrc='lib/pdf.worker.min.js';
 async function importPdf(file,cat,maxW,idx,total){
   const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
@@ -302,13 +305,83 @@ async function importPdf(file,cat,maxW,idx,total){
   const title=file.name.replace(/\.pdf$/i,'').replace(/[_]+/g,' ').trim();
   await putBook({id,title,cat,n,cover,coverV:1,added:Date.now(),last:0});
 }
+/* ---------- Impor CBR / CBZ (arsip gambar) ---------- */
+const IMG_MIME={jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',webp:'image/webp',gif:'image/gif',bmp:'image/bmp',avif:'image/avif'};
+const NAT=new Intl.Collator(undefined,{numeric:true,sensitivity:'base'});
+let ARC=null;
+async function loadArchiveLib(){
+  if(ARC)return ARC;
+  const m=await import('./lib/libarchive.js');
+  m.Archive.init({workerUrl:new URL('lib/worker-bundle.js',document.baseURI).href});
+  return ARC=m.Archive;
+}
+function flattenTree(o,prefix,out){
+  for(const k of Object.keys(o)){const v=o[k];
+    if(v instanceof File||(v&&typeof v.extract==='function'))out.push({file:v,path:prefix+k});
+    else if(v&&typeof v==='object')flattenTree(v,prefix+k+'/',out)}
+  return out;
+}
+async function pageFromImage(blob,maxW,ratio){
+  const im=await loadImg(blob),w=im.naturalWidth,h=im.naturalHeight;
+  if(!w||!h)throw new Error('gambar kosong');
+  const r=h/w;
+  if(Math.abs(r-ratio)/ratio<0.05&&w<=maxW*1.15&&blob.type==='image/jpeg')return {blob,r};
+  const tw=Math.min(maxW,w),th=Math.round(tw*ratio),c=document.createElement('canvas');c.width=tw;c.height=th;
+  const ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,tw,th);
+  const s=Math.min(tw/w,th/h),dw=w*s,dh=h*s;ctx.drawImage(im,(tw-dw)/2,(th-dh)/2,dw,dh);
+  const out=await new Promise(res=>c.toBlob(res,'image/jpeg',.85));c.width=c.height=0;
+  return {blob:out,r};
+}
+async function importArchive(file,cat,maxW,idx,total){
+  busyP(idx/total,file.name+' — membuka arsip…');
+  const Archive=await loadArchiveLib();
+  const arc=await Archive.open(file);
+  const id=uid();let n=0,cover=null;
+  try{
+    if(await arc.hasEncryptedData())throw new Error('Arsip berpassword tidak didukung');
+    const isRar=extOf(file.name)==='rar'||extOf(file.name)==='cbr';
+    let items;
+    if(isRar&&file.size<=80*1048576){ /* RAR kecil: ekstrak sekali jalan (lebih cepat untuk arsip solid) */
+      busyP(idx/total,file.name+' — mengekstrak…');
+      items=flattenTree(await arc.extractFiles(),'',[]);
+    }else{
+      items=(await arc.getFilesArray()).map(x=>({file:x.file,path:(x.path||'')+x.file.name}));
+    }
+    items=items.filter(x=>IMG_MIME[extOf(x.path)]&&!/(^|\/)(__MACOSX|\.)/.test(x.path)&&!/(^|\/)\._/.test(x.path));
+    items.sort((a,b)=>NAT.compare(a.path,b.path));
+    if(!items.length)throw new Error('Tidak ada gambar di dalam arsip');
+    const get=async it=>{const f=typeof it.file.extract==='function'?await it.file.extract():it.file;return new Blob([f],{type:IMG_MIME[extOf(it.path)]})};
+    /* rasio halaman acuan: halaman potret pertama (dari 6 halaman awal) */
+    let ratio=0;
+    for(let i=0;i<Math.min(6,items.length)&&!ratio;i++){const im=await loadImg(await get(items[i]));const r=im.naturalHeight/im.naturalWidth;if(r>1.05||i===Math.min(6,items.length)-1)ratio=r}
+    if(!ratio)ratio=1.42;ratio=Math.max(0.8,Math.min(2.2,ratio));
+    for(let i=0;i<items.length;i++){
+      if(cancelFlag)throw new Error('cancel');
+      let p;
+      try{p=await pageFromImage(await get(items[i]),maxW,ratio)}
+      catch(e){console.warn('lewati',items[i].path,e);continue}
+      if(n===0)cover=await makeCover(p.blob);
+      await putPage(id,n,p.blob);n++;
+      busyP((idx+(i+1)/items.length)/total,`${file.name} — halaman ${i+1} dari ${items.length}`);
+      if(i%4===0)await new Promise(r=>setTimeout(r,0));
+    }
+    if(!n)throw new Error('Tidak ada gambar yang bisa dibaca');
+  }catch(e){try{await delPages(id)}catch(_){}try{await arc.close()}catch(_){}throw e}
+  try{await arc.close()}catch(_){}
+  const title=file.name.replace(/\.(cbz|cbr|zip|rar)$/i,'').replace(/[_]+/g,' ').trim();
+  await putBook({id,title,cat,n,cover,coverV:1,added:Date.now(),last:0});
+}
 $('#goImport').onclick=async()=>{
   if(!pdfFiles.length){toast('Pilih file PDF dulu');return}
   const cat=$('#impCat').value,mw=+$('#impQ').value,files=pdfFiles;hide('#mImport');busy('Mengimpor PDF…');
   let ok=0,wl=null;
   try{wl=await navigator.wakeLock.request('screen')}catch(_){}
-  try{for(let i=0;i<files.length;i++){await importPdf(files[i],cat,mw,i,files.length);ok++}}
-  catch(e){if(e.message!=='cancel'){console.error(e);toast('Gagal mengimpor: '+(e.message||e),5000)}}
+  const fails=[];
+  for(let i=0;i<files.length;i++){
+    try{if(extOf(files[i].name)==='pdf')await importPdf(files[i],cat,mw,i,files.length);else await importArchive(files[i],cat,mw,i,files.length);ok++}
+    catch(e){if(e.message==='cancel')break;console.error(e);fails.push(files[i].name+': '+(e.message||e))}
+  }
+  if(fails.length)setTimeout(()=>toast('Gagal: '+fails.join(' | '),7000),300);
   try{wl&&wl.release()}catch(_){}
   unbusy();await refresh();if(ok)toast(ok+' buku berhasil ditambahkan');
   try{navigator.storage.persist&&navigator.storage.persist()}catch(_){}

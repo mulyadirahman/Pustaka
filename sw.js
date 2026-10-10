@@ -1,7 +1,7 @@
-const VER = 'pustaka-v2';
+const VER = 'pustaka-v3';
 const FILES = [
   './', './index.html', './manifest.webmanifest',
-  './lib/pdf.min.js', './lib/pdf.worker.min.js', './lib/page-flip.browser.js',
+  './lib/pdf.min.js', './lib/pdf.worker.min.js', './lib/page-flip.browser.js', './lib/libarchive.js', './lib/worker-bundle.js', './lib/libarchive.wasm',
   './icons/icon-192.png', './icons/icon-512.png'
 ];
 self.addEventListener('install', e => {
