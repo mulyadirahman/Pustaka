@@ -184,6 +184,7 @@ async function allBooks(){return req(db.transaction('books').objectStore('books'
 async function getBook(id){return req(db.transaction('books').objectStore('books').get(id))}
 async function putBook(b){const t=db.transaction('books','readwrite');t.objectStore('books').put(b);return txDone(t)}
 async function putPage(bookId,n,blob){const t=db.transaction('pages','readwrite');t.objectStore('pages').put({bookId,n,blob});return txDone(t)}
+async function putPages(arr){const t=db.transaction('pages','readwrite');const st=t.objectStore('pages');for(const p of arr)st.put(p);return txDone(t)}
 async function getPages(bookId){return req(db.transaction('pages').objectStore('pages').getAll(IDBKeyRange.bound([bookId,0],[bookId,1e9])))}
 async function getPage(bookId,n){return req(db.transaction('pages').objectStore('pages').get([bookId,n]))}
 async function delPages(bookId){const t=db.transaction('pages','readwrite');t.objectStore('pages').delete(IDBKeyRange.bound([bookId,0],[bookId,1e9]));return txDone(t)}
@@ -285,23 +286,36 @@ $('#fPdf').onchange=e=>{pdfFiles=[...e.target.files].filter(f=>BOOK_EXT.includes
   if(e.target.files.length&&pdfFiles.length<e.target.files.length)toast('File selain PDF/CBR/CBZ dilewati',3500);$('#pdfInfo').textContent=pdfFiles.length?pdfFiles.map(f=>f.name+' ('+(f.size/1048576).toFixed(1)+' MB)').join('\n'):'Belum ada file dipilih.';$('#pdfInfo').style.whiteSpace='pre-line'};
 pdfjsLib.GlobalWorkerOptions.workerSrc='lib/pdf.worker.min.js';
 async function importPdf(file,cat,maxW,idx,total){
-  const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
-  const id=uid(),n=pdf.numPages;let cover=null;
-  try{
-    for(let i=1;i<=n;i++){
-      if(cancelFlag)throw new Error('cancel');
-      const pg=await pdf.getPage(i),v1=pg.getViewport({scale:1}),sc=Math.min(maxW/v1.width,3),vp=pg.getViewport({scale:sc});
-      const c=document.createElement('canvas');c.width=Math.floor(vp.width);c.height=Math.floor(vp.height);
-      const ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);
-      await pg.render({canvasContext:ctx,viewport:vp}).promise;
-      const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.82));
-      if(i===1)cover=await makeCover(blob);
-      await putPage(id,i-1,blob);
-      pg.cleanup();c.width=c.height=0;
-      busyP(((idx+i/n)/total),`${file.name} — halaman ${i} dari ${n}`);
-      if(i%5===0)await new Promise(r=>setTimeout(r,0));
+  const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer(),isEvalSupported:false}).promise;
+  const id=uid(),n=pdf.numPages;
+  let cover=null,next=1,done=0,buf=[],err=null;
+  /* beberapa halaman digambar bersamaan; hasilnya disimpan berkelompok */
+  const CONC=Math.max(2,Math.min(4,Math.floor((navigator.hardwareConcurrency||4)/2)));
+  const flush=async()=>{if(!buf.length)return;const b=buf;buf=[];await putPages(b)};
+  const work=async()=>{
+    while(!err){
+      if(cancelFlag){err=err||new Error('cancel');return}
+      const i=next++;if(i>n)return;
+      try{
+        const pg=await pdf.getPage(i),v1=pg.getViewport({scale:1}),sc=Math.min(maxW/v1.width,3),vp=pg.getViewport({scale:sc});
+        const c=document.createElement('canvas');c.width=Math.floor(vp.width);c.height=Math.floor(vp.height);
+        const ctx=c.getContext('2d',{alpha:false});ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);
+        await pg.render({canvasContext:ctx,viewport:vp}).promise;
+        const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.8));
+        if(i===1)cover=await makeCover(blob);
+        pg.cleanup();c.width=c.height=0;
+        buf.push({bookId:id,n:i-1,blob});done++;
+        busyP((idx+done/n)/total,`${file.name} — halaman ${done} dari ${n}`);
+        if(buf.length>=12)await flush();
+      }catch(e){err=err||e;return}
     }
-  }catch(e){await delPages(id);throw e}
+  };
+  try{
+    await Promise.all(Array.from({length:CONC},work));
+    if(err)throw err;
+    await flush();
+  }catch(e){try{await delPages(id)}catch(_){}try{pdf.destroy()}catch(_){}throw e}
+  try{pdf.destroy()}catch(_){}
   const title=file.name.replace(/\.pdf$/i,'').replace(/[_]+/g,' ').trim();
   await putBook({id,title,cat,n,cover,coverV:1,added:Date.now(),last:0});
 }
@@ -336,7 +350,7 @@ async function importArchive(file,cat,maxW,idx,total){
   busyP(idx/total,file.name+' — membuka arsip…');
   const Archive=await loadArchiveLib();
   const arc=await Archive.open(file);
-  const id=uid();let n=0,cover=null;
+  const id=uid();let n=0,cover=null,abuf=[];
   try{
     if(await arc.hasEncryptedData())throw new Error('Arsip berpassword tidak didukung');
     const isRar=extOf(file.name)==='rar'||extOf(file.name)==='cbr';
@@ -361,10 +375,12 @@ async function importArchive(file,cat,maxW,idx,total){
       try{p=await pageFromImage(await get(items[i]),maxW,ratio)}
       catch(e){console.warn('lewati',items[i].path,e);continue}
       if(n===0)cover=await makeCover(p.blob);
-      await putPage(id,n,p.blob);n++;
+      abuf.push({bookId:id,n,blob:p.blob});n++;
+      if(abuf.length>=12){await putPages(abuf);abuf=[]}
       busyP((idx+(i+1)/items.length)/total,`${file.name} — halaman ${i+1} dari ${items.length}`);
       if(i%4===0)await new Promise(r=>setTimeout(r,0));
     }
+    if(abuf.length){await putPages(abuf);abuf=[]}
     if(!n)throw new Error('Tidak ada gambar yang bisa dibaca');
   }catch(e){try{await delPages(id)}catch(_){}try{await arc.close()}catch(_){}throw e}
   try{await arc.close()}catch(_){}
@@ -454,8 +470,13 @@ $('#fLib').onchange=async e=>{
       const e=H.books[k];const id=uid();
       const cover=f.slice(off,off+e.cover,'image/jpeg');off+=e.cover;
       const skip=exist.has(e.meta.title+'|'+e.meta.n);
-      for(let i=0;i<e.pages.length;i++){const sz=e.pages[i];if(!skip)await putPage(id,i,f.slice(off,off+sz,'image/jpeg'));off+=sz;
-        if(cancelFlag)throw new Error('cancel')}
+      let pb=[];
+      try{
+        for(let i=0;i<e.pages.length;i++){const sz=e.pages[i];if(!skip)pb.push({bookId:id,n:i,blob:f.slice(off,off+sz,'image/jpeg')});off+=sz;
+          if(pb.length>=25){await putPages(pb);pb=[];busyP((k+i/e.pages.length/1)/H.books.length,e.meta.title+' — halaman '+(i+1)+' dari '+e.pages.length)}
+          if(cancelFlag)throw new Error('cancel')}
+        if(pb.length)await putPages(pb);
+      }catch(er){try{await delPages(id)}catch(_){}throw er}
       if(!skip){await putBook({id,title:e.meta.title,cat:CATS.includes(e.meta.cat)?e.meta.cat:'Lainnya',n:e.meta.n,cover,coverV:1,added:e.meta.added||Date.now(),last:e.meta.last||0});added++}
       busyP((k+1)/H.books.length,e.meta.title);
     }

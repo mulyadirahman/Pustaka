@@ -1,4 +1,4 @@
-const VER = 'pustaka-v3';
+const VER = 'pustaka-v4';
 const FILES = [
   './', './index.html', './manifest.webmanifest',
   './lib/pdf.min.js', './lib/pdf.worker.min.js', './lib/page-flip.browser.js', './lib/libarchive.js', './lib/worker-bundle.js', './lib/libarchive.wasm',
